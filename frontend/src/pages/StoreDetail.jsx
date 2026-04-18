@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../utils/api'
 import { MapPin, Package, DollarSign, Plus, X, Edit, Trash2, ShoppingCart, Minus, PlusCircle, MinusCircle } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+import { useCart } from '../contexts/CartContext'
 import toast from 'react-hot-toast'
 import { validateName, validatePrice, validateQuantity } from '../utils/validation'
 
@@ -19,9 +20,10 @@ const StoreDetail = () => {
   const [addLoading, setAddLoading] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
   const [stockLoading, setStockLoading] = useState(false)
-  const [cart, setCart] = useState({})
   const [orderLoading, setOrderLoading] = useState(false)
   const { user } = useAuth()
+  const { addToCart: cartAdd, removeFromCart: cartRemove, clearCart: cartClear, getCartItemsForStore, getCartTotalForStore } = useCart()
+  const navigate = useNavigate()
   
   const [formData, setFormData] = useState({
     name: '',
@@ -261,90 +263,28 @@ const StoreDetail = () => {
     setShowStockModal(true)
   }
 
-  // Shopping cart functions
+  // Shopping cart functions using shared CartContext
   const addToCart = (item) => {
-    if (item.quantity <= 0) {
-      toast.error('Item is out of stock')
-      return
-    }
-    
-    setCart(prev => ({
-      ...prev,
-      [item._id]: (prev[item._id] || 0) + 1
-    }))
-    toast.success(`${item.name} added to cart`)
+    const itemWithStore = { ...item, store: store || { _id: id }, storeId: id }
+    cartAdd(itemWithStore)
   }
 
   const removeFromCart = (itemId) => {
-    setCart(prev => {
-      const newCart = { ...prev }
-      if (newCart[itemId] > 1) {
-        newCart[itemId] -= 1
-      } else {
-        delete newCart[itemId]
-      }
-      return newCart
-    })
+    cartRemove(id, itemId)
   }
 
   const clearCart = () => {
-    setCart({})
+    cartClear(id)
   }
 
-  const getCartTotal = () => {
-    return Object.entries(cart).reduce((total, [itemId, quantity]) => {
-      const item = items.find(i => i._id === itemId)
-      return total + (item?.price || 0) * quantity
-    }, 0)
-  }
-
-  const getCartItems = () => {
-    return Object.entries(cart).map(([itemId, quantity]) => {
-      const item = items.find(i => i._id === itemId)
-      return { ...item, cartQuantity: quantity }
-    }).filter(item => item._id)
-  }
-
-  const handlePlaceOrder = async () => {
-    if (!user) {
-      toast.error('Please login to place an order')
-      return
-    }
-
-    if (Object.keys(cart).length === 0) {
-      toast.error('Your cart is empty')
-      return
-    }
-
-    setOrderLoading(true)
-    
-    try {
-      const orderItems = Object.entries(cart).map(([itemId, quantity]) => ({
-        itemId,
-        quantity
-      }))
-
-      const orderData = {
-        storeId: id,
-        items: orderItems
-      }
-
-      const response = await api.post('/orders', orderData)
-      toast.success('Order placed successfully!')
-      clearCart()
-      fetchStoreData() // Refresh inventory
-    } catch (error) {
-      console.error('Failed to place order:', error)
-      toast.error(error.response?.data?.error || 'Failed to place order')
-    } finally {
-      setOrderLoading(false)
-    }
+  const handlePlaceOrder = () => {
+    navigate('/checkout')
   }
 
   const isManager = user?.role === 'manager' && store?.manager?._id === user?._id
   const isCustomer = user?.role === 'customer'
-  const cartItems = getCartItems()
-  const cartTotal = getCartTotal()
+  const cartItems = getCartItemsForStore(id)
+  const cartTotal = getCartTotalForStore(id)
   
 
 

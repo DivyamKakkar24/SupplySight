@@ -1,6 +1,7 @@
 const express = require('express');
-const Item = require('../models/Item');
+const Inventory = require('../models/Inventory');
 const Store = require('../models/Store');
+const { populateStores } = require('../utils/populateHelper');
 const { authenticateToken, requireManager } = require('../middleware/auth');
 
 const router = express.Router();
@@ -9,24 +10,8 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     const { search } = req.query;
-
-    const query = { isActive: true };
-
-    if (search && search.trim().length > 0) {
-      // Escape regex special characters in user input
-      const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(escaped, 'i');
-      query.$or = [
-        { name: regex },
-        { category: regex },
-        { description: regex }
-      ];
-    }
-
-    const items = await Item.find(query)
-      .populate('store', 'name address')
-      .sort({ createdAt: -1 });
-
+    const items = await Inventory.findAll({ search });
+    await populateStores(items, 'name address');
     res.json({ items });
   } catch (error) {
     console.error('Get items error:', error);
@@ -38,19 +23,14 @@ router.get('/', async (req, res) => {
 router.get('/store/:storeId', async (req, res) => {
   try {
     const { storeId } = req.params;
-    
+
     const store = await Store.findById(storeId);
     if (!store || !store.isActive) {
       return res.status(404).json({ error: 'Store not found' });
     }
 
-    const items = await Item.find({ 
-      store: storeId,
-      isActive: true 
-    })
-    .populate('store', 'name address')
-    .sort({ createdAt: -1 });
-
+    const items = await Inventory.findByStoreId(storeId);
+    await populateStores(items, 'name address');
     res.json({ items });
   } catch (error) {
     console.error('Get items error:', error);
@@ -61,13 +41,12 @@ router.get('/store/:storeId', async (req, res) => {
 // Get item by ID (public)
 router.get('/:itemId', async (req, res) => {
   try {
-    const item = await Item.findById(req.params.itemId)
-      .populate('store', 'name address');
-
+    const item = await Inventory.findById(req.params.itemId);
     if (!item || !item.isActive) {
       return res.status(404).json({ error: 'Item not found' });
     }
 
+    await populateStores([item], 'name address');
     res.json({ item });
   } catch (error) {
     console.error('Get item error:', error);
@@ -82,12 +61,11 @@ router.post('/store/:storeId', authenticateToken, requireManager, async (req, re
     const { name, description, price, quantity, reorderThreshold, category } = req.body;
 
     if (!name || !price) {
-      return res.status(400).json({ 
-        error: 'Name and price are required' 
+      return res.status(400).json({
+        error: 'Name and price are required'
       });
     }
 
-    // Check if store exists and user owns it
     const store = await Store.findById(storeId);
     if (!store || !store.isActive) {
       return res.status(404).json({ error: 'Store not found' });
@@ -97,18 +75,18 @@ router.post('/store/:storeId', authenticateToken, requireManager, async (req, re
       return res.status(403).json({ error: 'You can only add items to your own stores' });
     }
 
-    const item = new Item({
+    const item = await Inventory.create({
       name,
       description,
       price,
       quantity: quantity || 0,
       reorderThreshold: reorderThreshold || 10,
       category,
-      store: storeId
+      storeId: store._id.toString(),
+      storeName: store.name
     });
 
-    await item.save();
-    await item.populate('store', 'name address');
+    await populateStores([item], 'name address');
 
     res.status(201).json({
       message: 'Item created successfully',
@@ -126,26 +104,26 @@ router.put('/:itemId', authenticateToken, requireManager, async (req, res) => {
     const { itemId } = req.params;
     const { name, description, price, quantity, reorderThreshold, category } = req.body;
 
-    const item = await Item.findById(itemId).populate('store');
+    let item = await Inventory.findById(itemId);
     if (!item || !item.isActive) {
       return res.status(404).json({ error: 'Item not found' });
     }
 
-    // Check if user owns the store
-    if (item.store.manager.toString() !== req.user._id.toString()) {
+    await populateStores([item]);
+    if (!item.store || item.store.manager.toString() !== req.user._id.toString()) {
       return res.status(403).json({ error: 'You can only update items in your own stores' });
     }
 
-    // Update fields
-    if (name) item.name = name;
-    if (description !== undefined) item.description = description;
-    if (price !== undefined) item.price = price;
-    if (quantity !== undefined) item.quantity = quantity;
-    if (reorderThreshold !== undefined) item.reorderThreshold = reorderThreshold;
-    if (category !== undefined) item.category = category;
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (price !== undefined) updateData.price = price;
+    if (quantity !== undefined) updateData.quantity = quantity;
+    if (reorderThreshold !== undefined) updateData.reorderThreshold = reorderThreshold;
+    if (category !== undefined) updateData.category = category;
 
-    await item.save();
-    await item.populate('store', 'name address');
+    item = await Inventory.update(itemId, updateData);
+    await populateStores([item], 'name address');
 
     res.json({
       message: 'Item updated successfully',
@@ -162,20 +140,17 @@ router.delete('/:itemId', authenticateToken, requireManager, async (req, res) =>
   try {
     const { itemId } = req.params;
 
-    const item = await Item.findById(itemId).populate('store');
+    const item = await Inventory.findById(itemId);
     if (!item) {
       return res.status(404).json({ error: 'Item not found' });
     }
 
-    // Check if user owns the store
-    if (item.store.manager.toString() !== req.user._id.toString()) {
+    await populateStores([item]);
+    if (!item.store || item.store.manager.toString() !== req.user._id.toString()) {
       return res.status(403).json({ error: 'You can only delete items from your own stores' });
     }
 
-    // Soft delete
-    item.isActive = false;
-    await item.save();
-
+    await Inventory.softDelete(itemId);
     res.json({ message: 'Item deleted successfully' });
   } catch (error) {
     console.error('Delete item error:', error);
@@ -186,21 +161,14 @@ router.delete('/:itemId', authenticateToken, requireManager, async (req, res) =>
 // Get items by manager (all stores they own)
 router.get('/manager/my-items', authenticateToken, requireManager, async (req, res) => {
   try {
-    // Get stores owned by the manager
-    const stores = await Store.find({ 
+    const stores = await Store.find({
       manager: req.user._id,
-      isActive: true 
+      isActive: true
     });
+    const storeIds = stores.map(store => store._id.toString());
 
-    const storeIds = stores.map(store => store._id);
-
-    const items = await Item.find({ 
-      store: { $in: storeIds },
-      isActive: true 
-    })
-    .populate('store', 'name address')
-    .sort({ createdAt: -1 });
-
+    const items = await Inventory.findByStoreIds(storeIds);
+    await populateStores(items, 'name address');
     res.json({ items });
   } catch (error) {
     console.error('Get manager items error:', error);
@@ -211,22 +179,14 @@ router.get('/manager/my-items', authenticateToken, requireManager, async (req, r
 // Get low stock items for manager
 router.get('/manager/low-stock', authenticateToken, requireManager, async (req, res) => {
   try {
-    // Get stores owned by the manager
-    const stores = await Store.find({ 
+    const stores = await Store.find({
       manager: req.user._id,
-      isActive: true 
+      isActive: true
     });
+    const storeIds = stores.map(store => store._id.toString());
 
-    const storeIds = stores.map(store => store._id);
-
-    const lowStockItems = await Item.find({ 
-      store: { $in: storeIds },
-      isActive: true,
-      $expr: { $lte: ['$quantity', '$reorderThreshold'] }
-    })
-    .populate('store', 'name address')
-    .sort({ quantity: 1 });
-
+    const lowStockItems = await Inventory.findLowStock(storeIds);
+    await populateStores(lowStockItems, 'name address');
     res.json({ items: lowStockItems });
   } catch (error) {
     console.error('Get low stock items error:', error);
@@ -234,4 +194,4 @@ router.get('/manager/low-stock', authenticateToken, requireManager, async (req, 
   }
 });
 
-module.exports = router; 
+module.exports = router;

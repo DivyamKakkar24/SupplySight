@@ -72,12 +72,26 @@ const AuthProvider = ({ children }) => {
     setUser(null)
   }
 
+  const updateUser = async (profileData) => {
+    try {
+      const response = await api.put('/auth/profile', profileData)
+      setUser(response.data.user)
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to update profile'
+      }
+    }
+  }
+
   const value = {
     user,
     loading,
     login,
     register,
-    logout
+    logout,
+    updateUser
   }
 
   return (

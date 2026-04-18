@@ -12,6 +12,7 @@ import ManagerDashboard from './pages/ManagerDashboard'
 import Orders from './pages/Orders'
 import Profile from './pages/Profile'
 import Notifications from './pages/Notifications'
+import Checkout from './pages/Checkout'
 
 function App() {
   const { user, loading } = useAuth()
@@ -53,6 +54,7 @@ function App() {
         <Route path="stores" element={<Stores />} />
         <Route path="stores/:id" element={<StoreDetail />} />
         <Route path="orders" element={<Orders />} />
+        <Route path="checkout" element={<Checkout />} />
         <Route path="profile" element={<Profile />} />
         <Route path="notifications" element={<Notifications />} />
       </Route>

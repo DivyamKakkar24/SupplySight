@@ -22,12 +22,12 @@ const notificationSchema = new mongoose.Schema({
     required: true
   },
   item: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Item'
+    type: Number,
+    default: null
   },
   order: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Order'
+    type: Number,
+    default: null
   },
   recipient: {
     type: mongoose.Schema.Types.ObjectId,

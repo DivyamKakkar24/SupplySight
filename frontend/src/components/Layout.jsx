@@ -1,12 +1,15 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useCart } from '../contexts/CartContext'
 import { useNotifications } from '../contexts/NotificationContext'
 import { Bell, MapPin, Package, ShoppingCart, User, LogOut, Settings } from 'lucide-react'
 
 const Layout = () => {
   const { user, logout } = useAuth()
+  const { getCartCount } = useCart()
   const { unreadCount } = useNotifications()
   const location = useLocation()
+  const cartCount = getCartCount()
 
   const navigation = [
     { 
@@ -52,6 +55,21 @@ const Layout = () => {
             </div>
             
             <div className="flex items-center space-x-4">
+              {/* Cart */}
+              {user?.role === 'customer' && (
+                <Link
+                  to="/checkout"
+                  className="relative p-2 text-gray-400 hover:text-gray-500"
+                >
+                  <ShoppingCart className="w-6 h-6" />
+                  {cartCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-primary-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                      {cartCount > 9 ? '9+' : cartCount}
+                    </span>
+                  )}
+                </Link>
+              )}
+
               {/* Notifications */}
               <Link
                 to="/notifications"

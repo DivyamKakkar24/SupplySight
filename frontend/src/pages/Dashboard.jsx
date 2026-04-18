@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../utils/api'
 import { useAuth } from '../contexts/AuthContext'
+import { useCart } from '../contexts/CartContext'
 import { MapPin, Package, ShoppingCart, Search, X } from 'lucide-react'
 import ItemCard from '../components/ItemCard'
 
@@ -12,6 +13,7 @@ const Dashboard = () => {
   const [searchLoading, setSearchLoading] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
   const { user } = useAuth()
+  const { addToCart } = useCart()
 
   useEffect(() => {
     fetchStores()
@@ -154,7 +156,17 @@ const Dashboard = () => {
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {searchResults.map((item) => (
-                    <ItemCard key={item._id} item={item} />
+                    <ItemCard key={item._id} item={item} actions={
+                      user?.role === 'customer' && item.quantity > 0 ? (
+                        <button
+                          onClick={() => addToCart(item)}
+                          className="w-full flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-md"
+                        >
+                          <ShoppingCart className="w-4 h-4" />
+                          Add to Cart
+                        </button>
+                      ) : null
+                    } />
                   ))}
                 </div>
               </>

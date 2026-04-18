@@ -1,5 +1,7 @@
 const express = require('express');
 const Notification = require('../models/Notification');
+const Inventory = require('../models/Inventory');
+const MysqlOrder = require('../models/MysqlOrder');
 const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
@@ -8,44 +10,63 @@ const router = express.Router();
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const { since, limit = 50, unreadOnly = false } = req.query;
-    
+
     let query = { recipient: req.user._id };
-    
-    // For managers, only show notifications related to their stores
+
     if (req.user.role === 'manager') {
-      // Get stores owned by the manager
       const Store = require('../models/Store');
-      const managerStores = await Store.find({ 
+      const managerStores = await Store.find({
         manager: req.user._id,
-        isActive: true 
+        isActive: true
       });
       const storeIds = managerStores.map(store => store._id);
-      
-      // Filter notifications to only include those related to manager's stores
       query.store = { $in: storeIds };
     }
-    
-    // Filter by timestamp if since parameter is provided
+
     if (since) {
       const sinceDate = new Date(since);
       if (!isNaN(sinceDate.getTime())) {
         query.createdAt = { $gt: sinceDate };
       }
     }
-    
-    // Filter unread only if requested
+
     if (unreadOnly === 'true') {
       query.isRead = false;
     }
-    
+
     const notifications = await Notification.find(query)
       .populate('store', 'name address')
-      .populate('item', 'name sku')
-      .populate('order', '_id totalAmount')
       .sort({ createdAt: -1 })
       .limit(parseInt(limit));
 
-    res.json({ notifications });
+    // Cross-DB populate for items (now in MySQL)
+    const itemIds = [...new Set(notifications.map(n => n.item).filter(Boolean))];
+    const itemMap = {};
+    if (itemIds.length > 0) {
+      const items = await Inventory.findByIds(itemIds.map(Number));
+      for (const i of items) {
+        itemMap[String(i._id)] = { _id: i._id, name: i.name, sku: i.sku };
+      }
+    }
+
+    // Cross-DB populate for orders (now in MySQL)
+    const orderIds = [...new Set(notifications.map(n => n.order).filter(Boolean))];
+    const orderMap = {};
+    if (orderIds.length > 0) {
+      const orders = await MysqlOrder.findByIds(orderIds.map(Number));
+      for (const o of orders) {
+        orderMap[String(o._id)] = { _id: o._id, totalAmount: o.totalAmount };
+      }
+    }
+
+    const result = notifications.map(n => {
+      const obj = n.toObject();
+      if (obj.item) obj.item = itemMap[String(obj.item)] || null;
+      if (obj.order) obj.order = orderMap[String(obj.order)] || null;
+      return obj;
+    });
+
+    res.json({ notifications: result });
   } catch (error) {
     console.error('Get notifications error:', error);
     res.status(500).json({ error: 'Failed to fetch notifications' });
@@ -56,20 +77,19 @@ router.get('/', authenticateToken, async (req, res) => {
 router.put('/:notificationId/read', authenticateToken, async (req, res) => {
   try {
     const { notificationId } = req.params;
-    
+
     const notification = await Notification.findById(notificationId);
     if (!notification) {
       return res.status(404).json({ error: 'Notification not found' });
     }
-    
-    // Check if user owns this notification
+
     if (notification.recipient.toString() !== req.user._id.toString()) {
       return res.status(403).json({ error: 'You can only mark your own notifications as read' });
     }
-    
+
     notification.isRead = true;
     await notification.save();
-    
+
     res.json({ message: 'Notification marked as read' });
   } catch (error) {
     console.error('Mark notification read error:', error);
@@ -84,7 +104,7 @@ router.put('/read-all', authenticateToken, async (req, res) => {
       { recipient: req.user._id, isRead: false },
       { isRead: true }
     );
-    
+
     res.json({ message: 'All notifications marked as read' });
   } catch (error) {
     console.error('Mark all notifications read error:', error);
@@ -99,7 +119,7 @@ router.get('/unread/count', authenticateToken, async (req, res) => {
       recipient: req.user._id,
       isRead: false
     });
-    
+
     res.json({ count });
   } catch (error) {
     console.error('Get unread count error:', error);
@@ -111,19 +131,18 @@ router.get('/unread/count', authenticateToken, async (req, res) => {
 router.delete('/:notificationId', authenticateToken, async (req, res) => {
   try {
     const { notificationId } = req.params;
-    
+
     const notification = await Notification.findById(notificationId);
     if (!notification) {
       return res.status(404).json({ error: 'Notification not found' });
     }
-    
-    // Check if user owns this notification
+
     if (notification.recipient.toString() !== req.user._id.toString()) {
       return res.status(403).json({ error: 'You can only delete your own notifications' });
     }
-    
+
     await notification.deleteOne();
-    
+
     res.json({ message: 'Notification deleted' });
   } catch (error) {
     console.error('Delete notification error:', error);
@@ -135,7 +154,7 @@ router.delete('/:notificationId', authenticateToken, async (req, res) => {
 router.delete('/', authenticateToken, async (req, res) => {
   try {
     await Notification.deleteMany({ recipient: req.user._id });
-    
+
     res.json({ message: 'All notifications deleted' });
   } catch (error) {
     console.error('Delete all notifications error:', error);
@@ -143,4 +162,4 @@ router.delete('/', authenticateToken, async (req, res) => {
   }
 });
 
-module.exports = router; 
+module.exports = router;

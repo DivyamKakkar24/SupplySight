@@ -19,6 +19,7 @@ L.Marker.prototype.options.icon = L.icon({
   shadowSize: [41, 41],
 })
 import { AuthProvider } from './contexts/AuthContext'
+import { CartProvider } from './contexts/CartContext'
 import { NotificationProvider } from './contexts/NotificationContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import { Toaster } from 'react-hot-toast'
@@ -36,6 +37,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
       <BrowserRouter {...router}>
         <AuthProvider>
+          <CartProvider>
           <NotificationProvider>
             <App />
             <Toaster 
@@ -49,6 +51,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               }}
             />
           </NotificationProvider>
+          </CartProvider>
         </AuthProvider>
       </BrowserRouter>
     </ErrorBoundary>

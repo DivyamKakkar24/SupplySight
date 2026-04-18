@@ -10,6 +10,8 @@ const orderRoutes = require('./routes/orders');
 const notificationRoutes = require('./routes/notifications');
 const mlRoutes = require('./routes/ml');
 const { enhancedInventoryMonitoring, testMLServiceConnection } = require('./utils/cronJobs');
+const mysqlPool = require('./config/mysql');
+const { initializeTables } = require('./config/mysqlInit');
 
 dotenv.config();
 
@@ -42,13 +44,22 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Database connection
+// Database connections
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/fast-commerce', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
 .then(() => console.log('Connected to MongoDB'))
 .catch(err => console.error('MongoDB connection error:', err));
+
+mysqlPool.getConnection()
+  .then(conn => {
+    console.log('Connected to MySQL');
+    conn.release();
+    return initializeTables();
+  })
+  .then(() => console.log('MySQL tables initialized'))
+  .catch(err => console.error('MySQL connection error:', err));
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -59,12 +70,19 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/ml', mlRoutes);
 
 // Health check
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+app.get('/api/health', async (req, res) => {
+  let mysqlStatus = 'disconnected';
+  try {
+    await mysqlPool.execute('SELECT 1');
+    mysqlStatus = 'connected';
+  } catch (e) { /* disconnected */ }
+
+  res.json({
+    status: 'OK',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    mysql: mysqlStatus
   });
 });
 
