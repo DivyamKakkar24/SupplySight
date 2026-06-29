@@ -38,6 +38,15 @@ export const validateQuantity = (quantity) => {
   return { isValid: true, message: '' }
 }
 
+// Discount percentage validation
+export const validateDiscountPercent = (discountPercent) => {
+  const numDiscount = parseFloat(discountPercent)
+  if (isNaN(numDiscount) || numDiscount <= 0 || numDiscount > 100) {
+    return { isValid: false, message: 'Discount % must be between 0 and 100' }
+  }
+  return { isValid: true, message: '' }
+}
+
 // SKU validation
 export const validateSKU = (sku) => {
   if (!sku || sku.trim().length < 3) {

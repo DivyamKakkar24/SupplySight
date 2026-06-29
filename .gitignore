@@ -31,21 +31,21 @@ logs/
 Thumbs.db
 .vscode/
 .idea/
-# Tests (ignore all test files/scripts)
-**/test/**
-**/tests/**
-**/__tests__/**
-**/*.test.js
-**/*.test.jsx
-**/*.test.ts
-**/*.test.tsx
-**/*.spec.js
-**/*.spec.jsx
-**/*.spec.ts
-**/*.spec.tsx
-**/*-test.js
-**/test-*.js
-integration-test.js
-test-ml-integration.js
-test-ml-real-data.js
-backend/test-*.js
+# # Tests (ignore all test files/scripts)
+# **/test/**
+# **/tests/**
+# **/__tests__/**
+# **/*.test.js
+# **/*.test.jsx
+# **/*.test.ts
+# **/*.test.tsx
+# **/*.spec.js
+# **/*.spec.jsx
+# **/*.spec.ts
+# **/*.spec.tsx
+# **/*-test.js
+# **/test-*.js
+# integration-test.js
+# test-ml-integration.js
+# test-ml-real-data.js
+# backend/test-*.js

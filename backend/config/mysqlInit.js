@@ -1,5 +1,16 @@
 const pool = require('./mysql');
 
+async function ensureColumn(table, column, definition) {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+    [table, column]
+  );
+  if (rows[0].cnt === 0) {
+    await pool.execute(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
+  }
+}
+
 async function initializeTables() {
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS users (
@@ -80,6 +91,25 @@ async function initializeTables() {
       INDEX idx_storeId (storeId),
       INDEX idx_status (status),
       INDEX idx_createdAt (createdAt)
+    )
+  `);
+  await ensureColumn('orders', 'coupon_applied', 'coupon_applied INT NULL');
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS coupons (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      storeId INT NOT NULL,
+      code VARCHAR(50) NOT NULL,
+      usageLimit INT NOT NULL,
+      discountPercent DECIMAL(5, 2) NOT NULL,
+      validTill DATE NOT NULL,
+      status ENUM('ACTIVE','INACTIVE') NOT NULL DEFAULT 'ACTIVE',
+      createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (storeId) REFERENCES stores(id) ON DELETE CASCADE,
+      UNIQUE KEY uniq_store_code (storeId, code),
+      INDEX idx_storeId (storeId),
+      INDEX idx_status (status)
     )
   `);
 

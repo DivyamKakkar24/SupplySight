@@ -2,6 +2,7 @@ const express = require('express');
 const MysqlOrder = require('../models/MysqlOrder');
 const Inventory = require('../models/Inventory');
 const Store = require('../models/MysqlStore');
+const MysqlCoupon = require('../models/MysqlCoupon');
 const Notification = require('../models/MysqlNotification');
 const { populateStores, populateCustomers, populateOrderItems } = require('../utils/populateHelper');
 const { authenticateToken, requireCustomer, requireManager } = require('../middleware/auth');
@@ -19,7 +20,7 @@ async function populateOrder(order, itemSelectFields) {
 // Create order (customer only)
 router.post('/', authenticateToken, requireCustomer, async (req, res) => {
   try {
-    const { storeId, items, phone, address, city, state, pincode } = req.body;
+    const { storeId, items, phone, address, city, state, pincode, couponId } = req.body;
 
     if (!storeId || !items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({
@@ -66,10 +67,24 @@ router.post('/', authenticateToken, requireCustomer, async (req, res) => {
       totalAmount += item.price * quantity;
     }
 
+    let discountAmount = 0;
+    let appliedCouponId = null;
+    if (couponId) {
+      const coupon = await MysqlCoupon.findById(couponId);
+      if (!coupon || String(coupon.storeId) !== String(storeId)) {
+        return res.status(400).json({ error: 'Invalid coupon for this store' });
+      }
+      discountAmount = Math.round(totalAmount * coupon.discountPercent) / 100;
+      appliedCouponId = coupon._id;
+    }
+    const finalAmount = totalAmount - discountAmount;
+
     const order = await MysqlOrder.create({
       customerId: req.user._id.toString(),
       storeId,
       items: orderItems,
+      totalAmount: finalAmount,
+      couponId: appliedCouponId,
       changedBy: req.user._id.toString(),
       phone, address, city, state, pincode
     });
@@ -77,7 +92,7 @@ router.post('/', authenticateToken, requireCustomer, async (req, res) => {
     await Notification.create({
       type: 'order_placed',
       title: 'New Order Received',
-      message: `Order #${order._id} has been placed with total amount $${totalAmount.toFixed(2)}`,
+      message: `Order #${order._id} has been placed with total amount $${finalAmount.toFixed(2)}`,
       store: storeId,
       order: Number(order._id),
       recipient: store.manager
