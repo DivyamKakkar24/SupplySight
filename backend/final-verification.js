@@ -1,8 +1,7 @@
 const axios = require('axios');
-const mongoose = require('mongoose');
-const Store = require('./models/Store');
+const Store = require('./models/MysqlStore');
 const Inventory = require('./models/Inventory');
-const Notification = require('./models/Notification');
+const Notification = require('./models/MysqlNotification');
 const mysqlPool = require('./config/mysql');
 require('dotenv').config();
 
@@ -33,17 +32,12 @@ const finalVerification = async () => {
   let failed = 0;
 
   const testDatabaseConnection = async () => {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/fast-commerce');
-    const connectionState = mongoose.connection.readyState;
-    if (connectionState !== 1) {
-      throw new Error(`MongoDB not connected. State: ${connectionState}`);
-    }
     await mysqlPool.execute('SELECT 1');
-    log('Database Connection:', { mongodb: 'connected', mysql: 'connected' });
+    log('Database Connection:', { mysql: 'connected' });
   };
 
   const testStoreGeolocation = async () => {
-    const stores = await Store.find({ isActive: true });
+    const stores = await Store.findAll();
     if (stores.length === 0) throw new Error('No stores found');
     const storesWithLocation = stores.filter(store =>
       store.location && store.location.coordinates && store.location.coordinates.length === 2
@@ -70,7 +64,7 @@ const finalVerification = async () => {
   };
 
   const testNotificationSystem = async () => {
-    const notifications = await Notification.find({});
+    const notifications = await Notification.findAll();
     if (notifications.length === 0) throw new Error('No notifications found');
     const lowStockNotifications = notifications.filter(n => n.type === 'low_stock');
     const orderNotifications = notifications.filter(n => n.type === 'order_placed');
@@ -92,7 +86,7 @@ const finalVerification = async () => {
     const response = await axios.get('http://127.0.0.1:8000/health');
     if (response.data.status !== 'healthy') throw new Error('ML service health check failed');
 
-    const store = await Store.findOne({ isActive: true });
+    const [store] = await Store.findAll();
     const items = await Inventory.findByStoreId(store._id.toString());
     if (items.length === 0) throw new Error('No items found for ML test');
 
@@ -172,7 +166,6 @@ const finalVerification = async () => {
     log('Some features need attention. Check the issues above.');
   }
 
-  await mongoose.disconnect();
   await mysqlPool.end();
   return failed === 0;
 };

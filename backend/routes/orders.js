@@ -1,8 +1,8 @@
 const express = require('express');
 const MysqlOrder = require('../models/MysqlOrder');
 const Inventory = require('../models/Inventory');
-const Store = require('../models/Store');
-const Notification = require('../models/Notification');
+const Store = require('../models/MysqlStore');
+const Notification = require('../models/MysqlNotification');
 const { populateStores, populateCustomers, populateOrderItems } = require('../utils/populateHelper');
 const { authenticateToken, requireCustomer, requireManager } = require('../middleware/auth');
 
@@ -45,7 +45,7 @@ router.post('/', authenticateToken, requireCustomer, async (req, res) => {
       }
 
       const item = await Inventory.findById(itemId);
-      if (!item || !item.isActive || item.storeId !== storeId) {
+      if (!item || !item.isActive || String(item.storeId) !== String(storeId)) {
         return res.status(404).json({
           error: `Item ${itemId} not found in this store`
         });
@@ -74,7 +74,7 @@ router.post('/', authenticateToken, requireCustomer, async (req, res) => {
       phone, address, city, state, pincode
     });
 
-    const notification = new Notification({
+    await Notification.create({
       type: 'order_placed',
       title: 'New Order Received',
       message: `Order #${order._id} has been placed with total amount $${totalAmount.toFixed(2)}`,
@@ -82,7 +82,6 @@ router.post('/', authenticateToken, requireCustomer, async (req, res) => {
       order: Number(order._id),
       recipient: store.manager
     });
-    await notification.save();
 
     await populateOrder(order);
 
@@ -102,10 +101,7 @@ router.get('/', authenticateToken, async (req, res) => {
     let orders;
 
     if (req.user.role === 'manager') {
-      const managerStores = await Store.find({
-        manager: req.user._id,
-        isActive: true
-      });
+      const managerStores = await Store.findByManagerId(req.user._id);
       const storeIds = managerStores.map(store => store._id.toString());
       orders = await MysqlOrder.findByStoreIds(storeIds);
       await populateOrder(orders);
@@ -125,10 +121,7 @@ router.get('/', authenticateToken, async (req, res) => {
 // Get manager's orders (manager only)
 router.get('/manager/my-orders', authenticateToken, requireManager, async (req, res) => {
   try {
-    const managerStores = await Store.find({
-      manager: req.user._id,
-      isActive: true
-    });
+    const managerStores = await Store.findByManagerId(req.user._id);
     const storeIds = managerStores.map(store => store._id.toString());
 
     const orders = await MysqlOrder.findByStoreIds(storeIds);
@@ -217,7 +210,7 @@ router.put('/:orderId/status', authenticateToken, requireManager, async (req, re
 
     order = await MysqlOrder.updateStatus(orderId, status, req.user._id.toString());
 
-    const notification = new Notification({
+    await Notification.create({
       type: 'order_status_changed',
       title: `Order ${status.replace(/_/g, ' ')}`,
       message: `Your order #${order._id} status has been updated to ${status.replace(/_/g, ' ')}`,
@@ -226,7 +219,6 @@ router.put('/:orderId/status', authenticateToken, requireManager, async (req, re
       recipient: order.customerId,
       metadata: { status }
     });
-    await notification.save();
 
     await populateOrder(order);
 
@@ -255,7 +247,7 @@ router.put('/:orderId/cancel', authenticateToken, async (req, res) => {
     const isManager = req.user.role === 'manager' &&
       order.store && order.store.manager.toString() === req.user._id.toString();
     const isOrderOwner = req.user.role === 'customer' &&
-      order.customerId === req.user._id.toString();
+      String(order.customerId) === req.user._id.toString();
 
     if (!isManager && !isOrderOwner) {
       return res.status(403).json({ error: 'You are not authorized to cancel this order' });
@@ -288,7 +280,7 @@ router.put('/:orderId/cancel', authenticateToken, async (req, res) => {
     }
 
     if (isOrderOwner) {
-      const notification = new Notification({
+      await Notification.create({
         type: 'order_cancelled',
         title: 'Order Cancelled by Customer',
         message: `Order #${order._id} was cancelled by the customer`,
@@ -296,9 +288,8 @@ router.put('/:orderId/cancel', authenticateToken, async (req, res) => {
         order: Number(order._id),
         recipient: storeObj ? storeObj.manager : orderStoreId
       });
-      await notification.save();
     } else {
-      const notification = new Notification({
+      await Notification.create({
         type: 'order_cancelled',
         title: 'Order Cancelled',
         message: `Your order #${order._id} has been cancelled`,
@@ -306,7 +297,6 @@ router.put('/:orderId/cancel', authenticateToken, async (req, res) => {
         order: Number(order._id),
         recipient: orderCustomerId
       });
-      await notification.save();
     }
 
     await populateOrder(order);

@@ -3,10 +3,10 @@
 ![Node.js](https://img.shields.io/badge/Node.js-16.x-green?logo=node.js)
 ![React](https://img.shields.io/badge/React-18.x-blue?logo=react)
 ![Python](https://img.shields.io/badge/Python-3.x-yellow?logo=python)
-![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-brightgreen?logo=mongodb)
+![MySQL](https://img.shields.io/badge/MySQL-8.x-brightgreen?logo=mysql)
 ![Render](https://img.shields.io/badge/Deployed%20on-Render-purple)
 
-**SupplySight** is a comprehensive, modular full-stack inventory management platform tailored for multi-store businesses. It delivers real-time inventory tracking, predictive analytics with ML-powered demand forecasting, interactive store visualization, and role-based access control — all built with React, Node.js, MongoDB, and Python FastAPI microservices.
+**SupplySight** is a comprehensive, modular full-stack inventory management platform tailored for multi-store businesses. It delivers real-time inventory tracking, predictive analytics with ML-powered demand forecasting, interactive store visualization, and role-based access control — all built with React, Node.js, MySQL, and Python FastAPI microservices.
 
 ---
 
@@ -96,7 +96,7 @@ Key capabilities include:
 
 ### Backend (Node.js/Express)
 - Node.js runtime with Express.js framework  
-- MongoDB database managed via Mongoose ODM  
+- MySQL database via mysql2  
 - JWT authentication and bcrypt password hashing  
 - Node-Cron for scheduling background jobs  
 - Nodemailer for sending emails  
@@ -119,11 +119,10 @@ Key capabilities include:
 - Python math and data analysis for sales pattern evaluation  
 - Demand forecasting algorithms  
 
-### Database (MongoDB)
-- Document-based storage with Mongoose schemas  
-- Geospatial indexing for location queries  
-- Core models: User, Store, Item, Order, Notification  
-- Relationships handled with document references and population  
+### Database (MySQL)
+- Relational storage with explicit foreign keys  
+- Core tables: users, stores, inventory, orders, order_items, order_status_history, notifications  
+- Relationships handled via SQL joins and application-level population helpers  
 
 ---
 

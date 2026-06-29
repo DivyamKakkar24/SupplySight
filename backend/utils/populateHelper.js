@@ -1,5 +1,5 @@
-const Store = require('../models/Store');
-const User = require('../models/User');
+const MysqlStore = require('../models/MysqlStore');
+const MysqlUser = require('../models/MysqlUser');
 const Inventory = require('../models/Inventory');
 
 function pickFields(obj, fields) {
@@ -15,14 +15,17 @@ async function populateStores(records, selectFields = 'name address manager') {
   const arr = Array.isArray(records) ? records : [records];
   if (arr.length === 0) return records;
 
-  const storeIds = [...new Set(arr.map(r => r.storeId || (typeof r.store === 'string' ? r.store : null)).filter(Boolean))];
+  const storeIds = [...new Set(arr.map(r => {
+    const raw = r.storeId ?? (typeof r.store === 'object' ? null : r.store);
+    return raw ? Number(raw) : null;
+  }).filter(Boolean))];
   if (storeIds.length === 0) return records;
 
+  const stores = await MysqlStore.findByIds(storeIds);
   const fields = selectFields.includes('manager') ? selectFields : selectFields + ' manager';
-  const stores = await Store.find({ _id: { $in: storeIds } }).select(fields + ' _id').lean();
   const storeMap = {};
   for (const s of stores) {
-    storeMap[s._id.toString()] = s;
+    storeMap[s._id] = pickFields(s, fields);
   }
 
   for (const r of arr) {
@@ -32,18 +35,41 @@ async function populateStores(records, selectFields = 'name address manager') {
   return records;
 }
 
+async function populateManagers(stores, selectFields = 'name email') {
+  if (!stores) return stores;
+  const arr = Array.isArray(stores) ? stores : [stores];
+  if (arr.length === 0) return stores;
+
+  const managerIds = [...new Set(arr.map(s => Number(s.manager)).filter(Boolean))];
+  if (managerIds.length === 0) return stores;
+
+  const managers = await MysqlUser.findByIds(managerIds);
+  const managerMap = {};
+  for (const m of managers) {
+    managerMap[m._id] = pickFields(m, selectFields);
+  }
+
+  for (const s of arr) {
+    s.manager = managerMap[String(s.manager)] || null;
+  }
+  return stores;
+}
+
 async function populateCustomers(orders, selectFields = 'name email') {
   if (!orders) return orders;
   const arr = Array.isArray(orders) ? orders : [orders];
   if (arr.length === 0) return orders;
 
-  const customerIds = [...new Set(arr.map(o => o.customerId || (typeof o.customer === 'string' ? o.customer : null)).filter(Boolean))];
+  const customerIds = [...new Set(arr.map(o => {
+    const raw = o.customerId ?? (typeof o.customer === 'object' ? null : o.customer);
+    return raw ? Number(raw) : null;
+  }).filter(Boolean))];
   if (customerIds.length === 0) return orders;
 
-  const users = await User.find({ _id: { $in: customerIds } }).select(selectFields + ' _id').lean();
+  const users = await MysqlUser.findByIds(customerIds);
   const userMap = {};
   for (const u of users) {
-    userMap[u._id.toString()] = u;
+    userMap[u._id] = pickFields(u, selectFields);
   }
 
   for (const o of arr) {
@@ -84,6 +110,7 @@ async function populateOrderItems(orders, selectFields = 'name price sku') {
 
 module.exports = {
   populateStores,
+  populateManagers,
   populateCustomers,
   populateOrderItems
 };
