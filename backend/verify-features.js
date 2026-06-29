@@ -1,5 +1,4 @@
 const axios = require('axios');
-const mongoose = require('mongoose');
 
 const BASE_URL = process.env.BASE_URL || 'http://127.0.0.1:5000';
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
@@ -254,11 +253,10 @@ const testDatabaseConnection = async () => {
 
   try {
     const healthResp = await axios.get(`${BASE_URL}/api/health`);
-    log(`MongoDB: ${healthResp.data.mongodb}`, 'info');
     log(`MySQL: ${healthResp.data.mysql}`, 'info');
 
-    if (healthResp.data.mongodb === 'connected' && healthResp.data.mysql === 'connected') {
-      log('Both databases connected successfully', 'success');
+    if (healthResp.data.mysql === 'connected') {
+      log('Database connected successfully', 'success');
     }
   } catch (error) {
     log(`Database connection check failed: ${error.message}`, 'error');

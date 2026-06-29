@@ -2,7 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
-const User = require('../models/User');
+const User = require('../models/MysqlUser');
 const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
@@ -31,23 +31,21 @@ router.post('/register', async (req, res) => {
     }
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findByEmail(email);
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
     }
 
     // Create new user
-    const user = new User({
+    const user = await User.create({
       email,
       password,
       name,
       role
     });
 
-    await user.save();
-
     // Generate token
-    const token = user.generateToken();
+    const token = User.generateToken(user);
 
     res.status(201).json({
       message: 'User registered successfully',
@@ -75,19 +73,20 @@ router.post('/login', async (req, res) => {
     }
 
     // Find user with matching role
-    const user = await User.findOne({ email, role });
-    if (!user) {
+    const rawUser = await User.findByEmailAndRole(email, role);
+    if (!rawUser) {
       return res.status(401).json({ error: 'Invalid credentials or account type' });
     }
 
     // Check password
-    const isPasswordValid = await user.comparePassword(password);
+    const isPasswordValid = await User.comparePassword(rawUser, password);
     if (!isPasswordValid) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     // Generate token
-    const token = user.generateToken();
+    const token = User.generateToken(rawUser);
+    const user = await User.findById(rawUser.id);
 
     res.json({
       message: 'Login successful',
@@ -180,19 +179,12 @@ router.post('/login', async (req, res) => {
 router.put('/profile', authenticateToken, async (req, res) => {
   try {
     const { name, phone, address, city, state, pincode } = req.body;
-    const user = await User.findById(req.user._id);
-    if (!user) {
+    const existing = await User.findById(req.user._id);
+    if (!existing) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (name) user.name = name;
-    if (phone !== undefined) user.phone = phone;
-    if (address !== undefined) user.address = address;
-    if (city !== undefined) user.city = city;
-    if (state !== undefined) user.state = state;
-    if (pincode !== undefined) user.pincode = pincode;
-
-    await user.save();
+    const user = await User.updateProfile(req.user._id, { name, phone, address, city, state, pincode });
     res.json({ message: 'Profile updated successfully', user });
   } catch (error) {
     console.error('Update profile error:', error);

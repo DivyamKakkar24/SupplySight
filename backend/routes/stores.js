@@ -1,5 +1,6 @@
 const express = require('express');
-const Store = require('../models/Store');
+const Store = require('../models/MysqlStore');
+const { populateManagers } = require('../utils/populateHelper');
 const { authenticateToken, requireManager } = require('../middleware/auth');
 
 const router = express.Router();
@@ -8,21 +9,15 @@ const router = express.Router();
 router.get('/', authenticateToken, async (req, res) => {
   try {
     let stores;
-    
+
     if (req.user.role === 'manager') {
       // Managers only see their own stores
-      stores = await Store.find({ 
-        manager: req.user._id,
-        isActive: true 
-      })
-      .populate('manager', 'name email')
-      .sort({ createdAt: -1 });
+      stores = await Store.findByManagerId(req.user._id);
     } else {
       // Customers see all stores
-      stores = await Store.find({ isActive: true })
-        .populate('manager', 'name email')
-        .sort({ createdAt: -1 });
+      stores = await Store.findAll();
     }
+    await populateManagers(stores, 'name email');
 
     res.json({ stores });
   } catch (error) {
@@ -34,9 +29,8 @@ router.get('/', authenticateToken, async (req, res) => {
 // Get all stores (public - for map display)
 router.get('/public', async (req, res) => {
   try {
-    const stores = await Store.find({ isActive: true })
-      .populate('manager', 'name email')
-      .sort({ createdAt: -1 });
+    const stores = await Store.findAll();
+    await populateManagers(stores, 'name email');
 
     res.json({ stores });
   } catch (error) {
@@ -48,12 +42,12 @@ router.get('/public', async (req, res) => {
 // Get store by ID (public)
 router.get('/:id', async (req, res) => {
   try {
-    const store = await Store.findById(req.params.id)
-      .populate('manager', 'name email');
+    const store = await Store.findById(req.params.id);
 
     if (!store || !store.isActive) {
       return res.status(404).json({ error: 'Store not found' });
     }
+    await populateManagers([store], 'name email');
 
     res.json({ store });
   } catch (error) {
@@ -68,30 +62,25 @@ router.post('/', authenticateToken, requireManager, async (req, res) => {
     const { name, description, address, coordinates } = req.body;
 
     if (!name || !address || !coordinates) {
-      return res.status(400).json({ 
-        error: 'Name, address, and coordinates are required' 
+      return res.status(400).json({
+        error: 'Name, address, and coordinates are required'
       });
     }
 
     if (!Array.isArray(coordinates) || coordinates.length !== 2) {
-      return res.status(400).json({ 
-        error: 'Coordinates must be an array with [longitude, latitude]' 
+      return res.status(400).json({
+        error: 'Coordinates must be an array with [longitude, latitude]'
       });
     }
 
-    const store = new Store({
+    const store = await Store.create({
       name,
       description,
       address,
-      location: {
-        type: 'Point',
-        coordinates
-      },
-      manager: req.user._id
+      coordinates,
+      managerId: req.user._id
     });
-
-    await store.save();
-    await store.populate('manager', 'name email');
+    await populateManagers([store], 'name email');
 
     res.status(201).json({
       message: 'Store created successfully',
@@ -109,7 +98,7 @@ router.put('/:id', authenticateToken, requireManager, async (req, res) => {
     const { name, description, address, coordinates } = req.body;
     const storeId = req.params.id;
 
-    const store = await Store.findById(storeId);
+    let store = await Store.findById(storeId);
     if (!store) {
       return res.status(404).json({ error: 'Store not found' });
     }
@@ -119,21 +108,14 @@ router.put('/:id', authenticateToken, requireManager, async (req, res) => {
       return res.status(403).json({ error: 'You can only update your own stores' });
     }
 
-    // Update fields
-    if (name) store.name = name;
-    if (description !== undefined) store.description = description;
-    if (address) store.address = address;
-    if (coordinates) {
-      if (!Array.isArray(coordinates) || coordinates.length !== 2) {
-        return res.status(400).json({ 
-          error: 'Coordinates must be an array with [longitude, latitude]' 
-        });
-      }
-      store.location.coordinates = coordinates;
+    if (coordinates && (!Array.isArray(coordinates) || coordinates.length !== 2)) {
+      return res.status(400).json({
+        error: 'Coordinates must be an array with [longitude, latitude]'
+      });
     }
 
-    await store.save();
-    await store.populate('manager', 'name email');
+    store = await Store.update(storeId, { name, description, address, coordinates });
+    await populateManagers([store], 'name email');
 
     res.json({
       message: 'Store updated successfully',
@@ -161,8 +143,7 @@ router.delete('/:id', authenticateToken, requireManager, async (req, res) => {
     }
 
     // Soft delete
-    store.isActive = false;
-    await store.save();
+    await Store.softDelete(storeId);
 
     res.json({ message: 'Store deleted successfully' });
   } catch (error) {
@@ -174,12 +155,8 @@ router.delete('/:id', authenticateToken, requireManager, async (req, res) => {
 // Get stores by manager
 router.get('/manager/my-stores', authenticateToken, requireManager, async (req, res) => {
   try {
-    const stores = await Store.find({ 
-      manager: req.user._id,
-      isActive: true 
-    })
-    .populate('manager', 'name email')
-    .sort({ createdAt: -1 });
+    const stores = await Store.findByManagerId(req.user._id);
+    await populateManagers(stores, 'name email');
 
     res.json({ stores });
   } catch (error) {
@@ -188,4 +165,4 @@ router.get('/manager/my-stores', authenticateToken, requireManager, async (req, 
   }
 });
 
-module.exports = router; 
+module.exports = router;

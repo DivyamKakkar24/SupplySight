@@ -1,6 +1,6 @@
 const Inventory = require('../models/Inventory');
-const Store = require('../models/Store');
-const Notification = require('../models/Notification');
+const Store = require('../models/MysqlStore');
+const Notification = require('../models/MysqlNotification');
 const { populateStores } = require('./populateHelper');
 const axios = require('axios');
 
@@ -20,15 +20,14 @@ const checkInventoryLevels = async () => {
     console.log(`Found ${lowStockItems.length} items with low stock`);
 
     for (const item of lowStockItems) {
-      const existingNotification = await Notification.findOne({
-        item: Number(item._id),
-        type: 'low_stock',
-        isRead: false,
-        createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-      });
+      const existingNotification = await Notification.findRecentByItemAndType(
+        Number(item._id),
+        'low_stock',
+        new Date(Date.now() - 24 * 60 * 60 * 1000)
+      );
 
       if (!existingNotification) {
-        const notification = new Notification({
+        await Notification.create({
           type: 'low_stock',
           title: 'Low Stock Alert',
           message: `${item.name} (SKU: ${item.sku}) is running low on stock. Current quantity: ${item.quantity}, Threshold: ${item.reorderThreshold}`,
@@ -41,8 +40,6 @@ const checkInventoryLevels = async () => {
             suggestedReorder: item.reorderThreshold * 2
           }
         });
-
-        await notification.save();
         console.log(`Created low stock notification for ${item.name}`);
       }
     }
@@ -53,15 +50,14 @@ const checkInventoryLevels = async () => {
     console.log(`Found ${outOfStockItems.length} out of stock items`);
 
     for (const item of outOfStockItems) {
-      const existingNotification = await Notification.findOne({
-        item: Number(item._id),
-        type: 'out_of_stock',
-        isRead: false,
-        createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-      });
+      const existingNotification = await Notification.findRecentByItemAndType(
+        Number(item._id),
+        'out_of_stock',
+        new Date(Date.now() - 24 * 60 * 60 * 1000)
+      );
 
       if (!existingNotification) {
-        const notification = new Notification({
+        await Notification.create({
           type: 'out_of_stock',
           title: 'Out of Stock Alert',
           message: `${item.name} (SKU: ${item.sku}) is completely out of stock!`,
@@ -74,8 +70,6 @@ const checkInventoryLevels = async () => {
             suggestedReorder: item.reorderThreshold * 3
           }
         });
-
-        await notification.save();
         console.log(`Created out of stock notification for ${item.name}`);
       }
     }
@@ -90,7 +84,7 @@ const generateReorderSuggestions = async () => {
   try {
     console.log('Starting ML-powered reorder suggestions generation...');
 
-    const stores = await Store.find({ isActive: true });
+    const stores = await Store.findAll();
 
     for (const store of stores) {
       try {
@@ -105,12 +99,11 @@ const generateReorderSuggestions = async () => {
 
         for (const item of lowStockItems) {
           try {
-            const existingNotification = await Notification.findOne({
-              item: Number(item._id),
-              type: 'reorder_suggestion',
-              isRead: false,
-              createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-            });
+            const existingNotification = await Notification.findRecentByItemAndType(
+              Number(item._id),
+              'reorder_suggestion',
+              new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+            );
 
             if (!existingNotification) {
               let suggestedQuantity = item.reorderThreshold * 2;
@@ -133,7 +126,7 @@ const generateReorderSuggestions = async () => {
                 mlReasoning = 'Basic suggestion (ML service unavailable)';
               }
 
-              const notification = new Notification({
+              await Notification.create({
                 type: 'reorder_suggestion',
                 title: 'ML-Powered Reorder Suggestion',
                 message: `Consider reordering ${item.name} (SKU: ${item.sku}). Suggested quantity: ${suggestedQuantity}`,
@@ -147,8 +140,6 @@ const generateReorderSuggestions = async () => {
                   mlPowered: true
                 }
               });
-
-              await notification.save();
               console.log(`Created ML-powered reorder suggestion for ${item.name} in ${store.name}`);
             }
           } catch (itemError) {
@@ -181,10 +172,8 @@ const cleanupOldNotifications = async () => {
   try {
     console.log('Starting notification cleanup...');
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const result = await Notification.deleteMany({
-      createdAt: { $lt: thirtyDaysAgo }
-    });
-    console.log(`Cleaned up ${result.deletedCount} old notifications`);
+    const deletedCount = await Notification.deleteOlderThan(thirtyDaysAgo);
+    console.log(`Cleaned up ${deletedCount} old notifications`);
   } catch (error) {
     console.error('Error in notification cleanup:', error);
   }

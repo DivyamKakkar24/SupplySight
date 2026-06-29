@@ -1,6 +1,6 @@
 const express = require('express');
 const Inventory = require('../models/Inventory');
-const Store = require('../models/Store');
+const Store = require('../models/MysqlStore');
 const { populateStores } = require('../utils/populateHelper');
 const { authenticateToken, requireManager } = require('../middleware/auth');
 
@@ -161,10 +161,7 @@ router.delete('/:itemId', authenticateToken, requireManager, async (req, res) =>
 // Get items by manager (all stores they own)
 router.get('/manager/my-items', authenticateToken, requireManager, async (req, res) => {
   try {
-    const stores = await Store.find({
-      manager: req.user._id,
-      isActive: true
-    });
+    const stores = await Store.findByManagerId(req.user._id);
     const storeIds = stores.map(store => store._id.toString());
 
     const items = await Inventory.findByStoreIds(storeIds);
@@ -179,10 +176,7 @@ router.get('/manager/my-items', authenticateToken, requireManager, async (req, r
 // Get low stock items for manager
 router.get('/manager/low-stock', authenticateToken, requireManager, async (req, res) => {
   try {
-    const stores = await Store.find({
-      manager: req.user._id,
-      isActive: true
-    });
+    const stores = await Store.findByManagerId(req.user._id);
     const storeIds = stores.map(store => store._id.toString());
 
     const lowStockItems = await Inventory.findLowStock(storeIds);

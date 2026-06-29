@@ -1,40 +1,25 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
-const User = require('./models/User');
-const Store = require('./models/Store');
+const User = require('./models/MysqlUser');
+const Store = require('./models/MysqlStore');
 const Inventory = require('./models/Inventory');
 const MysqlOrder = require('./models/MysqlOrder');
-const Notification = require('./models/Notification');
+const Notification = require('./models/MysqlNotification');
 const mysqlPool = require('./config/mysql');
 const { initializeTables } = require('./config/mysqlInit');
 require('dotenv').config();
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/fast-commerce';
-
-function generateSKU(storeName, itemName) {
-  const timestamp = Date.now().toString().slice(-6);
-  const storePrefix = storeName.replace(/\s+/g, '').toUpperCase().slice(0, 3);
-  const itemPrefix = itemName.replace(/\s+/g, '').toUpperCase().slice(0, 3);
-  return `${storePrefix}-${itemPrefix}-${timestamp}`;
-}
-
 async function seedDatabase() {
   try {
-    console.log('Connecting to MongoDB...');
-    await mongoose.connect(MONGODB_URI);
-    console.log('Connected to MongoDB');
-
     console.log('Initializing MySQL tables...');
     await initializeTables();
     console.log('MySQL tables initialized');
 
-    // Clear all data
+    // Clear all data (children first to satisfy foreign keys)
     console.log('Clearing existing data...');
-    await User.deleteMany({});
-    await Store.deleteMany({});
-    await Notification.deleteMany({});
+    await Notification.deleteAll();
     await MysqlOrder.deleteAll();
     await Inventory.deleteAll();
+    await Store.deleteAll();
+    await User.deleteAll();
     console.log('Database cleared');
 
     // Create test users
@@ -75,36 +60,32 @@ async function seedDatabase() {
       name: 'Mumbai Electronics Hub',
       description: 'Premium electronics and gadgets in the heart of Mumbai',
       address: '123 Marine Drive, Colaba, Mumbai, Maharashtra 400001',
-      location: { type: 'Point', coordinates: [72.8777, 18.9220] },
-      manager: manager1._id,
-      isActive: true
+      coordinates: [72.8777, 18.9220],
+      managerId: manager1._id
     });
 
     const store2 = await Store.create({
       name: 'Delhi Fashion Boutique',
       description: 'Trendy fashion and accessories in Delhi',
       address: '456 Connaught Place, New Delhi, Delhi 110001',
-      location: { type: 'Point', coordinates: [77.2184, 28.6287] },
-      manager: manager1._id,
-      isActive: true
+      coordinates: [77.2184, 28.6287],
+      managerId: manager1._id
     });
 
     const store3 = await Store.create({
       name: 'Bangalore Grocery Market',
       description: 'Fresh groceries and organic products',
       address: '789 MG Road, Bangalore, Karnataka 560001',
-      location: { type: 'Point', coordinates: [77.5946, 12.9716] },
-      manager: manager2._id,
-      isActive: true
+      coordinates: [77.5946, 12.9716],
+      managerId: manager2._id
     });
 
     const store4 = await Store.create({
       name: 'Hyderabad Hardware Store',
       description: 'Tools, hardware, and home improvement supplies',
       address: '321 Banjara Hills, Hyderabad, Telangana 500034',
-      location: { type: 'Point', coordinates: [78.4719, 17.3993] },
-      manager: manager2._id,
-      isActive: true
+      coordinates: [78.4719, 17.3993],
+      managerId: manager2._id
     });
 
     console.log('Stores created with Indian locations:', [store1.name, store2.name, store3.name, store4.name]);
@@ -121,7 +102,7 @@ async function seedDatabase() {
 
     const electronicsItems = [];
     for (const data of electronicsItemsData) {
-      const item = await Inventory.create({ ...data, storeId: store1._id.toString(), storeName: store1.name });
+      const item = await Inventory.create({ ...data, storeId: store1._id, storeName: store1.name });
       electronicsItems.push(item);
     }
 
@@ -134,7 +115,7 @@ async function seedDatabase() {
 
     const fashionItems = [];
     for (const data of fashionItemsData) {
-      const item = await Inventory.create({ ...data, storeId: store2._id.toString(), storeName: store2.name });
+      const item = await Inventory.create({ ...data, storeId: store2._id, storeName: store2.name });
       fashionItems.push(item);
     }
 
@@ -147,7 +128,7 @@ async function seedDatabase() {
 
     const groceryItems = [];
     for (const data of groceryItemsData) {
-      const item = await Inventory.create({ ...data, storeId: store3._id.toString(), storeName: store3.name });
+      const item = await Inventory.create({ ...data, storeId: store3._id, storeName: store3.name });
       groceryItems.push(item);
     }
 
@@ -159,7 +140,7 @@ async function seedDatabase() {
     ];
 
     for (const data of hardwareItemsData) {
-      await Inventory.create({ ...data, storeId: store4._id.toString(), storeName: store4.name });
+      await Inventory.create({ ...data, storeId: store4._id, storeName: store4.name });
     }
 
     console.log('Items created for all stores');
@@ -169,17 +150,17 @@ async function seedDatabase() {
     await Inventory.create({
       name: 'Out of Stock Item', description: 'Item for testing out of stock alerts',
       price: 99.99, quantity: 0, reorderThreshold: 5, category: 'Electronics',
-      storeId: store1._id.toString(), storeName: store1.name
+      storeId: store1._id, storeName: store1.name
     });
     await Inventory.create({
       name: 'High Demand Product', description: 'Item with high sales for ML testing',
       price: 49.99, quantity: 50, reorderThreshold: 10, category: 'Electronics',
-      storeId: store1._id.toString(), storeName: store1.name
+      storeId: store1._id, storeName: store1.name
     });
     await Inventory.create({
       name: 'Low Stock Alert Item', description: 'Item for testing low stock notifications',
       price: 29.99, quantity: 2, reorderThreshold: 5, category: 'Electronics',
-      storeId: store1._id.toString(), storeName: store1.name
+      storeId: store1._id, storeName: store1.name
     });
     console.log('Edge case items created');
 
@@ -187,33 +168,33 @@ async function seedDatabase() {
     console.log('Creating test orders...');
 
     const order1 = await MysqlOrder.createForSeed({
-      customerId: customer1._id.toString(),
-      storeId: store1._id.toString(),
+      customerId: customer1._id,
+      storeId: store1._id,
       items: [{ itemId: Number(electronicsItems[0]._id), quantity: 1, price: 999.99 }],
       status: 'DELIVERED',
-      changedBy: customer1._id.toString()
+      changedBy: customer1._id
     });
 
     const order2 = await MysqlOrder.createForSeed({
-      customerId: customer2._id.toString(),
-      storeId: store2._id.toString(),
+      customerId: customer2._id,
+      storeId: store2._id,
       items: [
         { itemId: Number(fashionItems[0]._id), quantity: 1, price: 299.99 },
         { itemId: Number(fashionItems[1]._id), quantity: 2, price: 89.99 }
       ],
       status: 'DELIVERED',
-      changedBy: customer2._id.toString()
+      changedBy: customer2._id
     });
 
     const order3 = await MysqlOrder.createForSeed({
-      customerId: customer1._id.toString(),
-      storeId: store3._id.toString(),
+      customerId: customer1._id,
+      storeId: store3._id,
       items: [
         { itemId: Number(groceryItems[0]._id), quantity: 3, price: 2.99 },
         { itemId: Number(groceryItems[1]._id), quantity: 2, price: 4.99 }
       ],
       status: 'DELIVERED',
-      changedBy: customer1._id.toString()
+      changedBy: customer1._id
     });
 
     console.log('Orders created:', [order1._id, order2._id, order3._id]);
@@ -237,15 +218,15 @@ async function seedDatabase() {
       const itemIndex = Math.floor(Math.random() * electronicsItems.length);
 
       await MysqlOrder.createForSeed({
-        customerId: customer1._id.toString(),
-        storeId: store1._id.toString(),
+        customerId: customer1._id,
+        storeId: store1._id,
         items: [{
           itemId: Number(electronicsItems[itemIndex]._id),
           quantity: quantity,
           price: electronicsItems[itemIndex].price
         }],
         status: 'DELIVERED',
-        changedBy: customer1._id.toString(),
+        changedBy: customer1._id,
         createdAt: orderDate
       });
     }
@@ -333,9 +314,8 @@ async function seedDatabase() {
     console.error('Seeding error:', error);
     process.exit(1);
   } finally {
-    await mongoose.disconnect();
     await mysqlPool.end();
-    console.log('Database connections closed');
+    console.log('Database connection closed');
   }
 }
 
