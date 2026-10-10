@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../utils/api'
-import { MapPin, Package, DollarSign, Plus, X, Edit, Trash2, ShoppingCart, Minus, PlusCircle, MinusCircle } from 'lucide-react'
+import { MapPin, Package, DollarSign, Plus, X, Edit, Trash2, ShoppingCart, Minus, PlusCircle, MinusCircle, Tag } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useCart } from '../contexts/CartContext'
 import toast from 'react-hot-toast'
@@ -324,13 +324,22 @@ const StoreDetail = () => {
           {user?.role === 'manager' && (
             <div className="flex items-center space-x-2">
               {isManager ? (
-                <button
-                  onClick={() => setShowAddModal(true)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Item
-                </button>
+                <>
+                  <button
+                    onClick={() => navigate(`/stores/${id}/coupons`)}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    <Tag className="w-4 h-4 mr-2" />
+                    Manage Coupons
+                  </button>
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Item
+                  </button>
+                </>
               ) : (
                 <div className="text-sm text-gray-500">
                   (Not your store - you can only manage your own stores)

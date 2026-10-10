@@ -6,6 +6,7 @@ const authRoutes = require('./routes/auth');
 const storeRoutes = require('./routes/stores');
 const itemRoutes = require('./routes/items');
 const orderRoutes = require('./routes/orders');
+const couponRoutes = require('./routes/coupons');
 const notificationRoutes = require('./routes/notifications');
 const mlRoutes = require('./routes/ml');
 const { enhancedInventoryMonitoring, testMLServiceConnection } = require('./utils/cronJobs');
@@ -58,6 +59,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/coupons', couponRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/ml', mlRoutes);
 

@@ -119,16 +119,18 @@ async function findAll({ storeId, since } = {}) {
   return assembleOrders(rows);
 }
 
-async function create({ customerId, storeId, items, changedBy, phone, address, city, state, pincode }) {
+async function create({ customerId, storeId, items, totalAmount, couponId, changedBy, phone, address, city, state, pincode }) {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
-    const totalAmount = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+    const finalAmount = totalAmount !== undefined
+      ? totalAmount
+      : items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
 
     const [orderResult] = await connection.execute(
-      `INSERT INTO orders (customerId, storeId, totalAmount, status, phone, address, city, state, pincode) VALUES (?, ?, ?, 'PLACED', ?, ?, ?, ?, ?)`,
-      [String(customerId), String(storeId), totalAmount, phone || null, address || null, city || null, state || null, pincode || null]
+      `INSERT INTO orders (customerId, storeId, totalAmount, status, phone, address, city, state, pincode, coupon_applied) VALUES (?, ?, ?, 'PLACED', ?, ?, ?, ?, ?, ?)`,
+      [String(customerId), String(storeId), finalAmount, phone || null, address || null, city || null, state || null, pincode || null, couponId || null]
     );
     const orderId = orderResult.insertId;
 

@@ -8,6 +8,7 @@ import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import Stores from './pages/Stores'
 import StoreDetail from './pages/StoreDetail'
+import Coupons from './pages/Coupons'
 import ManagerDashboard from './pages/ManagerDashboard'
 import Orders from './pages/Orders'
 import Profile from './pages/Profile'
@@ -53,6 +54,7 @@ function App() {
         } />
         <Route path="stores" element={<Stores />} />
         <Route path="stores/:id" element={<StoreDetail />} />
+        <Route path="stores/:id/coupons" element={<Coupons />} />
         <Route path="orders" element={<Orders />} />
         <Route path="checkout" element={<Checkout />} />
         <Route path="profile" element={<Profile />} />

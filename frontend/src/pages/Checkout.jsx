@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useCart } from '../contexts/CartContext'
 import { api } from '../utils/api'
-import { ShoppingCart, Minus, Plus, Trash2, MapPin, Phone, User, Save } from 'lucide-react'
+import { ShoppingCart, Minus, Plus, Trash2, MapPin, Phone, User, Save, Tag, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const Checkout = () => {
@@ -12,6 +12,12 @@ const Checkout = () => {
   const navigate = useNavigate()
   const [orderLoading, setOrderLoading] = useState(false)
   const [saveDetails, setSaveDetails] = useState(true)
+
+  // appliedCoupons: { [storeId]: { coupon, discountAmount, total } }
+  const [appliedCoupons, setAppliedCoupons] = useState({})
+  const [couponModalStoreId, setCouponModalStoreId] = useState(null)
+  const [activeCoupons, setActiveCoupons] = useState([])
+  const [couponLoading, setCouponLoading] = useState(false)
 
   const [form, setForm] = useState({
     name: '',
@@ -48,9 +54,65 @@ const Checkout = () => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
-  const grandTotal = storeIds.reduce((sum, sid) => sum + getCartTotalForStore(sid), 0)
+  const isMultiStore = storeIds.length > 1
+
+  const grandTotal = storeIds.reduce((sum, sid) =>
+    sum + (appliedCoupons[sid]?.total ?? getCartTotalForStore(sid)), 0)
+
+  const openCouponModal = async (storeId) => {
+    setCouponModalStoreId(storeId)
+    setCouponLoading(true)
+    try {
+      const response = await api.get(`/coupons/store/${storeId}/active`)
+      setActiveCoupons(response.data.coupons)
+    } catch (error) {
+      console.error('Failed to fetch active coupons:', error)
+      toast.error('Failed to load coupons')
+      setActiveCoupons([])
+    } finally {
+      setCouponLoading(false)
+    }
+  }
+
+  const handleApplyCoupon = async (storeId, coupon) => {
+    const subtotal = getCartTotalForStore(storeId)
+    try {
+      const response = await api.post(`/coupons/${coupon._id}/apply`, { storeId, subtotal })
+      setAppliedCoupons(prev => ({
+        ...prev,
+        [storeId]: {
+          coupon: response.data.coupon,
+          discountAmount: response.data.discountAmount,
+          total: response.data.total
+        }
+      }))
+      toast.success(`Coupon ${coupon.code} applied!`)
+      setCouponModalStoreId(null)
+    } catch (error) {
+      console.error('Failed to apply coupon:', error)
+      toast.error(error.response?.data?.error || 'Failed to apply coupon')
+    }
+  }
+
+  const handleRemoveCoupon = async (storeId) => {
+    const applied = appliedCoupons[storeId]
+    if (!applied) return
+    try {
+      await api.post(`/coupons/${applied.coupon._id}/release`, { storeId })
+      setAppliedCoupons(prev => {
+        const next = { ...prev }
+        delete next[storeId]
+        return next
+      })
+      toast.success('Coupon removed')
+    } catch (error) {
+      console.error('Failed to remove coupon:', error)
+      toast.error(error.response?.data?.error || 'Failed to remove coupon')
+    }
+  }
 
   const handlePlaceOrder = async () => {
+    if (isMultiStore) return
     if (!form.name || !form.phone || !form.address || !form.city || !form.state || !form.pincode) {
       toast.error('Please fill in all contact and address details')
       return
@@ -83,7 +145,8 @@ const Checkout = () => {
           address: form.address,
           city: form.city,
           state: form.state,
-          pincode: form.pincode
+          pincode: form.pincode,
+          couponId: appliedCoupons[storeId]?.coupon._id
         })
       }
 
@@ -91,6 +154,7 @@ const Checkout = () => {
         ? `${storeIds.length} orders placed successfully!`
         : 'Order placed successfully!')
       clearAllCarts()
+      setAppliedCoupons({})
       navigate('/orders')
     } catch (error) {
       console.error('Failed to place order:', error)
@@ -155,8 +219,38 @@ const Checkout = () => {
                     </span>
                   </div>
                 ))}
-                <div className="text-right text-sm font-medium text-gray-700 pr-1">
-                  Subtotal: ${storeTotal.toFixed(2)}
+                <div className="flex items-center justify-end gap-3 pr-1">
+                  {appliedCoupons[storeId] ? (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-green-700 font-medium">
+                        Coupon {appliedCoupons[storeId].coupon.code} applied (-${appliedCoupons[storeId].discountAmount.toFixed(2)})
+                      </span>
+                      <button
+                        onClick={() => handleRemoveCoupon(storeId)}
+                        className="text-red-500 hover:text-red-700 text-xs underline"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => openCouponModal(storeId)}
+                      className="inline-flex items-center text-sm text-primary-600 hover:text-primary-700 border border-primary-600 rounded-md px-3 py-1"
+                    >
+                      <Tag className="w-3.5 h-3.5 mr-1" />
+                      Apply Coupon
+                    </button>
+                  )}
+                  <div className="text-sm font-medium text-gray-700">
+                    {appliedCoupons[storeId] ? (
+                      <>
+                        <span className="line-through text-gray-400 mr-2">${storeTotal.toFixed(2)}</span>
+                        Subtotal: ${appliedCoupons[storeId].total.toFixed(2)}
+                      </>
+                    ) : (
+                      <>Subtotal: ${storeTotal.toFixed(2)}</>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -167,7 +261,53 @@ const Checkout = () => {
           <span className="text-lg font-bold text-gray-900">Grand Total</span>
           <span className="text-lg font-bold text-primary-600">${grandTotal.toFixed(2)}</span>
         </div>
+        {isMultiStore && (
+          <p className="text-sm text-red-600 mt-2 text-right">Cannot add items from different stores.</p>
+        )}
       </div>
+
+      {/* Apply Coupon Modal */}
+      {couponModalStoreId && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-[9999]">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Available Coupons</h3>
+                <button
+                  onClick={() => setCouponModalStoreId(null)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {couponLoading ? (
+                <div className="flex justify-center py-6">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                </div>
+              ) : activeCoupons.length === 0 ? (
+                <p className="text-sm text-gray-500 py-4 text-center">No active coupons available for this store.</p>
+              ) : (
+                <div className="space-y-2">
+                  {activeCoupons.map(coupon => (
+                    <button
+                      key={coupon._id}
+                      onClick={() => handleApplyCoupon(couponModalStoreId, coupon)}
+                      className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:border-primary-500 hover:bg-primary-50 text-left"
+                    >
+                      <div>
+                        <p className="font-medium text-gray-900">{coupon.code}</p>
+                        <p className="text-xs text-gray-500">Valid till {new Date(coupon.validTill).toLocaleDateString()}</p>
+                      </div>
+                      <span className="text-primary-600 font-semibold">{coupon.discountPercent}% off</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Contact & Address Form */}
       <div className="card">
@@ -269,7 +409,7 @@ const Checkout = () => {
         </button>
         <button
           onClick={handlePlaceOrder}
-          disabled={orderLoading}
+          disabled={orderLoading || isMultiStore}
           className="px-6 py-3 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
         >
           {orderLoading ? 'Placing Order...' : `Place Order - $${grandTotal.toFixed(2)}`}
